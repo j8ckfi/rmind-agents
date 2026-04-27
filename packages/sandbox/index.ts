@@ -40,3 +40,15 @@ export {
   type CreateLocalDockerSandboxParams,
   type LocalDockerState,
 } from "./local-docker";
+
+// host
+export {
+  HostSandbox,
+  connectHostSandbox,
+  createHostSandbox,
+  HOST_DEFAULTS,
+  type HostSandboxConfig,
+  type HostSandboxConnectConfig,
+  type CreateHostSandboxParams,
+  type HostState,
+} from "./host";

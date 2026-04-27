@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"TOKEN=$(node -e \\\"console.log(JSON.parse(require('fs').readFileSync('$APPDATA/com.vercel.cli/Data/auth.json','utf8')).token)\\\") && curl -sS -H \\\"Authorization: Bearer $TOKEN\\\" \\\"https://ap...",
+  "error": "Exit code 1\nnode:fs:440\r\n    return binding.readFileUtf8(path, stringToFlags(options.flag));\r\n                   ^\r\n\r\nError: ENOENT: no such file or directory, open 'C:\\Users\\Jack\\projects\\rmind-agents\\deploy\\vercel\\UsersJackAppDataRoaming\\com.vercel.cli\\Data\\auth.json'\r\n    at Object.readFileSync (node:fs:440:20)\r\n    at [eval]:1:38\r\n    at runScriptInThisContext (node:internal/vm:219:10)\r\n    at node:internal/process/execution:451:12\r\n    at [eval]-wrapper:6:24\r\n    at runScriptInContext (node...",
+  "timestamp": "2026-04-27T17:27:00.765Z",
+  "retry_count": 1
+}

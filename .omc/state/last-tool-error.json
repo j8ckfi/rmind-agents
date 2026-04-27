@@ -1,7 +1,7 @@
 {
-  "tool_name": "Read",
-  "tool_input_preview": "{\"file_path\":\"C:\\\\Users\\\\Jack\\\\projects\\\\pi-mono-ref\\\\packages\\\\coding-agent\\\\examples\\\\extensions\\\\custom-provider-anthropic\\\\src\\\\index.ts\"}",
-  "error": "File does not exist. Note: your current working directory is C:\\Users\\Jack\\projects\\rmind-agents.",
-  "timestamp": "2026-04-27T16:32:50.234Z",
-  "retry_count": 5
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"where psql 2>&1; where postgres 2>&1; where pg_ctl 2>&1\",\"timeout\":15000,\"description\":\"Check existing postgres install\"}",
+  "error": "Exit code 1\nINFO: Could not find files for the given pattern(s).\r\nINFO: Could not find files for the given pattern(s).\r\nINFO: Could not find files for the given pattern(s).",
+  "timestamp": "2026-04-27T17:18:37.936Z",
+  "retry_count": 1
 }
