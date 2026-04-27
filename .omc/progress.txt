@@ -1,0 +1,45 @@
+## RMIND-AGENTS RALPH PROGRESS LOG
+Spec date: 2026-04-27
+Working dir: C:/Users/Jack/projects/rmind-agents
+Branch: rmind/self-hosted-fork
+Fork: https://github.com/j8ckfi/rmind-agents (upstream: vercel-labs/open-agents)
+Reference: C:/Users/Jack/projects/pi-mono-ref (badlogic/pi-mono)
+
+## Recon findings (Phase 0)
+
+### vercel-labs/open-agents anatomy
+
+- Bun monorepo, packages: agent, sandbox + apps/web (Next.js 15)
+- packages/sandbox/interface.ts — actual Sandbox interface (NOT the simplified one in the spec):
+  readFile, writeFile, stat, access, mkdir, readdir, exec, execDetached?,
+  stop, extendTimeout?, snapshot?, getState?, type, workingDirectory, env?, currentBranch?,
+  hooks?, environmentDetails?, host?, expiresAt?, timeout?, domain?(port)
+- 77 files import @open-agents/sandbox; main consumer apps/web/app/api/chat/_lib/runtime.ts
+- 14 files import from @vercel/workflow as `workflow` and `workflow/api`. Surface used: getWritable, getRun, sleep, getWorkflowMetadata
+- Drizzle schema apps/web/lib/db/schema.ts has sessions.sandboxState (jsonb) and sessions.lifecycleState (enum) — must coexist with new sandbox backend
+- Streaming: SSE response in apps/web/app/api/chat/[chatId]/stream/route.ts uses workflow.getRun(runId).getReadable<WebAgentUIMessageChunk>()
+- packages/agent/open-agent.ts builds a `ToolLoopAgent` from `ai`. Tools live in packages/agent/tools/{bash,read,write,edit,grep,glob,fetch,...}.ts and call sandbox via experimental_context
+
+### badlogic/pi-mono SDK anatomy
+
+- npm: @mariozechner/pi-coding-agent v0.70.2 (ESM only, Node >=20.6)
+- createAgentSession({ cwd, authStorage, modelRegistry, customTools, model, ... }) -> { session }
+- session.subscribe(listener) and session.prompt(text)
+- AuthStorage.create(authPath) reads ~/.pi/agent/auth.json (mode 0600)
+- ModelRegistry.create(authStorage, modelsJsonPath) reads JSON not YAML — spec is wrong about extension
+- Tools: TypeBox parameters, execute(toolCallId, params, signal, onUpdate, ctx) -> AgentToolResult
+- Built-in tools: read, bash, edit, write, grep, find, ls — must be replaced with sandbox-backed versions
+- Provider config example at packages/coding-agent/docs/models.md confirms openai-completions can target https://opencode.ai/v1 with apiKey "$OPENCODE_GO_API_KEY"
+
+## Strategy adjustments vs spec
+
+1. The Sandbox interface is bigger than the spec listed. Implementing the actual interface is required so all 77 importers keep working.
+2. Pi uses models.json not models.yml — spec wording is misleading.
+3. Pi tool format is TypeBox + AgentToolResult — different from the AI SDK Zod tool format. Adapter needed.
+4. @vercel/workflow swap: 14 files use it. Build a local-workflow shim that satisfies the surface used (getWritable, getRun, sleep, getWorkflowMetadata) rather than rewriting all 14.
+5. ToolLoopAgent (`ai` package) and the pi session are very different runtimes. Wire pi as an opt-in backend behind AGENT_BACKEND env so existing path still works during the transition.
+6. Docker daemon is currently NOT running on the host machine — code can be written and type-checked, but the LocalDockerSandbox integration test must be run by the user once they start Docker Desktop.
+7. Vercel auth, GitHub App, Cloudflare tunnel, DNS, API keys, and pi OAuth all require user action — captured in DEPLOYMENT.md.
+
+## Iteration log
+- 2026-04-27 — Recon complete. Branch rmind/self-hosted-fork created. PRD scaffold authored.

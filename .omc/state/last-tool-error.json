@@ -1,0 +1,7 @@
+{
+  "tool_name": "Read",
+  "tool_input_preview": "{\"file_path\":\"C:\\\\Users\\\\Jack\\\\projects\\\\pi-mono-ref\\\\packages\\\\coding-agent\\\\examples\\\\extensions\\\\custom-provider-anthropic\\\\src\\\\index.ts\"}",
+  "error": "File does not exist. Note: your current working directory is C:\\Users\\Jack\\projects\\rmind-agents.",
+  "timestamp": "2026-04-27T16:32:50.234Z",
+  "retry_count": 5
+}

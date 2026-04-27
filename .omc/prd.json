@@ -1,0 +1,166 @@
+{
+  "title": "Open Agents Self-Hosted Fork (rmind-agents)",
+  "summary": "Fork vercel-labs/open-agents to remove dependence on @vercel/sandbox and @vercel/workflow, swap the AI SDK ToolLoopAgent for the pi-coding-agent SDK so the system can route per-turn across OpenCode Go / Codex OAuth / Anthropic, and prepare deployment to agents.rmind.us via Vercel proxy + Cloudflare Tunnel + a home rack.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Workspace, branch, and PRD",
+      "passes": false,
+      "acceptanceCriteria": [
+        "Fork rmind-agents exists under j8ckfi on GitHub with upstream remote pointing at vercel-labs/open-agents",
+        "Branch rmind/self-hosted-fork is checked out locally at C:/Users/Jack/projects/rmind-agents",
+        ".omc/prd.json exists with task-specific acceptance criteria (no boilerplate)",
+        ".omc/progress.txt initialized with the recon summary"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "LocalDockerSandbox base image",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/sandbox/docker/Dockerfile exists and installs Node 20+, Bun, pnpm, Python 3.12, git, curl, ripgrep, fd, jq, build-essential, ca-certificates",
+        "Dockerfile creates a non-root user `agent` and sets WORKDIR to /workspace",
+        "packages/sandbox/docker/build.sh exists and tags the image as ${SANDBOX_BASE_IMAGE:-open-agents-sandbox:base}",
+        "Dockerfile does not COPY any host secrets and does not bake in tokens"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "LocalDockerSandbox implements Sandbox interface",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/sandbox/local-docker/sandbox.ts exports class LocalDockerSandbox implementing every method declared on Sandbox in packages/sandbox/interface.ts (readFile, writeFile, stat, access, mkdir, readdir, exec, execDetached, stop, extendTimeout, snapshot, getState, plus workingDirectory/host/domain/type)",
+        "Implementation uses dockerode bound to the docker socket from SANDBOX_DOCKER_HOST or default",
+        "exec() honours the AbortSignal in options and returns ExecResult with success/exitCode/stdout/stderr/output/wasAborted",
+        "domain(port) returns http://localhost:<hostPort> using the rack-side port mapping established at create()",
+        "stop() removes the container and any temp volumes; getState() returns a serializable LocalDockerSandboxState"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Sandbox factory dispatch",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/sandbox/local-docker/connect.ts exports connectLocalDockerSandbox returning Sandbox",
+        "packages/sandbox/factory.ts connectSandbox dispatches on state.type === 'local-docker' OR env SANDBOX_BACKEND=local-docker",
+        "packages/sandbox/index.ts re-exports the local-docker entry points alongside the Vercel ones",
+        "packages/sandbox/types.ts SandboxState union includes a LocalDockerState variant",
+        "packages/sandbox/package.json gains dockerode (and @types/dockerode) as runtime deps; @vercel/sandbox stays so existing callers still build"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "Pi agent wrapper package",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/pi-agent/package.json exists with dependency @mariozechner/pi-coding-agent ^0.70.2",
+        "packages/pi-agent/src/index.ts exports runAgentTurn({ taskId, sandbox, prompt, modelSpec, history, onEvent, abortSignal }) returning AgentTurnResult",
+        "Internal createAgentSession call wires AuthStorage from PI_AUTH_PATH and ModelRegistry from PI_MODELS_PATH",
+        "AgentSessionEvent stream is converted to the existing WebAgentUIMessageChunk shape (start/text/tool-call/tool-result/finish)",
+        "Errors during refresh of OAuth tokens surface as a typed AgentTurnResult.error rather than uncaught throws"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "Pi tool adapter from sandbox",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/pi-agent/src/tools.ts exports buildSandboxTools(sandbox) returning ToolDefinition[]",
+        "Tools cover: read, write, edit, grep, glob, bash, web_fetch — each backed by the Sandbox interface only (no host fs access)",
+        "Schemas are TypeBox; AbortSignal is forwarded into sandbox.exec",
+        "bash tool maps onto sandbox.exec with the sandbox.workingDirectory as cwd default and respects the spec's 5-minute timeout",
+        "web_fetch is implemented out-of-sandbox using globalThis.fetch — agent process, not container"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "Models template + auth bootstrap docs",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/pi-agent/templates/models.json includes providers: opencode-go (openai-completions, baseUrl https://opencode.ai/v1, apiKey $OPENCODE_GO_API_KEY), anthropic (api-key), and a placeholder for codex (oauth — managed by pi auth login)",
+        "Models listed: glm-5.1, kimi-k2.6, deepseek-v4-pro, qwen-3.6-plus, minimax-m2.7 under opencode-go; claude-opus-4-7 and claude-sonnet-4-6 under anthropic; gpt-5.4-codex and gpt-5-codex-mini under codex",
+        "packages/pi-agent/templates/auth.json.example is committed (placeholders only, no real tokens)",
+        "packages/pi-agent/README.md documents `pi auth login codex` and `pi auth login copilot` flow over SSH"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "Workflow shim package",
+      "passes": false,
+      "acceptanceCriteria": [
+        "packages/local-workflow/src/index.ts implements the surface used by the web app: getWritable, getWorkflowMetadata, sleep",
+        "packages/local-workflow/src/api.ts implements getRun(runId) returning { getReadable<T>(): ReadableStream<T> }",
+        "Process-local registry persists each run's chunk buffer in memory and on Postgres so reconnects can resume from a cursor",
+        "Existing imports from `workflow` and `workflow/api` resolve to the shim via tsconfig paths or workspace alias",
+        "No code path on the rack reaches @vercel/workflow at runtime (verified by grep on the built output / tsconfig path)"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "Wire pi agent runner into web app",
+      "passes": false,
+      "acceptanceCriteria": [
+        "apps/web/app/workflows/chat.ts gates between the existing ToolLoopAgent path and a new pi-agent path via env AGENT_BACKEND=pi|tool-loop (default pi when PI_MODELS_PATH is set)",
+        "Pi path constructs sandbox via connectSandbox, then calls runAgentTurn with the chat history converted to pi message format",
+        "UIMessageChunk events from pi reach writable.getWriter().write(part) in the same shape the existing UI consumes",
+        "Cancellation via abortController propagates to the pi session and to sandbox.exec",
+        "Compile passes with bun run typecheck on apps/web"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "Docker Compose for the rack",
+      "passes": false,
+      "acceptanceCriteria": [
+        "deploy/rack/docker-compose.yml exposes services: web (Next.js), postgres, cloudflared",
+        "web service mounts /var/run/docker.sock so it can spawn sandbox containers, mounts /data/pi for auth.json and models.json, and reads env from .env",
+        "postgres service has a named volume and exposes port 5432 internal-only",
+        "cloudflared service uses image cloudflare/cloudflared:latest and reads token/config from env",
+        "deploy/rack/.env.example lists every required variable from spec §6 (POSTGRES_URL, JWE_SECRET, ENCRYPTION_KEY, GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, NEXT_PUBLIC_GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, OPENCODE_GO_API_KEY, ANTHROPIC_API_KEY, PI_AUTH_PATH, PI_MODELS_PATH, SANDBOX_DOCKER_HOST, SANDBOX_BASE_IMAGE)"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "Vercel proxy project",
+      "passes": false,
+      "acceptanceCriteria": [
+        "deploy/vercel/next.config.ts rewrites all dynamic routes (`/api/:path*`, `/_next/data/:path*`, `/`, `/dashboard/:path*`, etc.) to ${RACK_TUNNEL_ORIGIN}",
+        "deploy/vercel/vercel.json sets framework Next.js, build/install commands, and env scoping; production target is agents.rmind.us",
+        "deploy/vercel/app/api/github/app/callback/route.ts re-implements the callback by forwarding to the rack with the original query string",
+        "deploy/vercel/package.json declares Next 15 minimal deps and a `vercel-build` script",
+        "deploy/vercel/README.md states the manual Vercel CLI steps the user must run"
+      ]
+    },
+    {
+      "id": "US-012",
+      "title": "Cloudflare tunnel template",
+      "passes": false,
+      "acceptanceCriteria": [
+        "deploy/cloudflared/config.template.yml maps hostname agents.rmind.us → http://web:3000 with WS upgrade enabled",
+        "deploy/cloudflared/README.md documents the three-step flow: cloudflared tunnel create rmind-agents, DNS route via cloudflared tunnel route dns, drop credentials.json into deploy/cloudflared/",
+        "Heartbeat / 100s idle timeout mitigation is documented (agent must emit ping every 30s)"
+      ]
+    },
+    {
+      "id": "US-013",
+      "title": "Deployment runbook + .env.example",
+      "passes": false,
+      "acceptanceCriteria": [
+        "DEPLOYMENT.md at repo root walks through every prerequisite the user must satisfy: Docker Desktop running, GitHub App registration, Vercel auth + project, Cloudflare account + tunnel, DNS for rmind.us, API keys, pi auth login over SSH",
+        "DEPLOYMENT.md states explicitly which steps the agent automated and which require user action",
+        ".env.example committed at repo root with the same variable list as deploy/rack/.env.example",
+        "DEPLOYMENT.md includes a smoke-test checklist (login, create task, see PR)"
+      ]
+    },
+    {
+      "id": "US-014",
+      "title": "Type check + commits",
+      "passes": false,
+      "acceptanceCriteria": [
+        "All new TypeScript files pass tsc --noEmit (or bun run typecheck if dependencies install) on the packages they belong to — at minimum the file set is internally type-consistent",
+        "Each phase committed as a discrete commit on rmind/self-hosted-fork with a message referring to the spec section",
+        "Final commit pushed to origin/rmind/self-hosted-fork on j8ckfi/rmind-agents"
+      ]
+    }
+  ]
+}

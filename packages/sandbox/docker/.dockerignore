@@ -1,0 +1,3 @@
+## Keep the sandbox base image deterministic — never copy host files into it.
+## The Dockerfile only uses RUN commands; nothing should be COPYed.
+*

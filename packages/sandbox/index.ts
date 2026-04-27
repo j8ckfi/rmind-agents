@@ -28,3 +28,15 @@ export {
   type VercelSandboxConnectConfig,
   type VercelState,
 } from "./vercel";
+
+// local docker
+export {
+  LocalDockerSandbox,
+  connectLocalDockerSandbox,
+  createLocalDockerSandbox,
+  LOCAL_DOCKER_DEFAULTS,
+  type LocalDockerSandboxConfig,
+  type LocalDockerSandboxConnectConfig,
+  type CreateLocalDockerSandboxParams,
+  type LocalDockerState,
+} from "./local-docker";

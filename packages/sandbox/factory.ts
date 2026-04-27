@@ -2,6 +2,8 @@ import type { Sandbox, SandboxHooks } from "./interface";
 import type { SandboxStatus } from "./types";
 import { connectVercel } from "./vercel/connect";
 import type { VercelState } from "./vercel/state";
+import { connectLocalDockerSandbox } from "./local-docker/connect";
+import type { LocalDockerState } from "./local-docker/state";
 
 // Re-export SandboxStatus from types for convenience
 export type { SandboxStatus };
@@ -10,7 +12,9 @@ export type { SandboxStatus };
  * Unified sandbox state type.
  * Use `type` discriminator to determine which sandbox implementation to use.
  */
-export type SandboxState = { type: "vercel" } & VercelState;
+export type SandboxState =
+  | ({ type: "vercel" } & VercelState)
+  | ({ type: "local-docker" } & LocalDockerState);
 
 /**
  * Base connect options for all sandbox types.
@@ -47,13 +51,20 @@ export interface ConnectOptions {
 /**
  * Configuration for connecting to a sandbox.
  */
-export type SandboxConnectConfig = {
-  state: { type: "vercel" } & VercelState;
-  options?: ConnectOptions;
-};
+export type SandboxConnectConfig =
+  | { state: { type: "vercel" } & VercelState; options?: ConnectOptions }
+  | { state: { type: "local-docker" } & LocalDockerState; options?: ConnectOptions };
 
 /**
  * Connect to a sandbox based on the provided configuration.
+ *
+ * Dispatch order:
+ *   1. state.type === "local-docker" → connectLocalDockerSandbox
+ *   2. state.type === "vercel" or unset → connectVercel (legacy default)
+ *
+ * Set SANDBOX_BACKEND=local-docker to make the rack default to LocalDockerSandbox
+ * for newly-created sessions; existing rows keep working because the discriminator
+ * lives inside the persisted state.
  */
 export async function connectSandbox(
   configOrState: SandboxConnectConfig | SandboxState,
@@ -62,14 +73,23 @@ export async function connectSandbox(
   const isNewApi =
     typeof configOrState === "object" &&
     "state" in configOrState &&
-    typeof configOrState.state === "object" &&
-    "type" in configOrState.state;
+    typeof (configOrState as SandboxConnectConfig).state === "object" &&
+    "type" in (configOrState as SandboxConnectConfig).state;
 
-  if (isNewApi) {
-    const config = configOrState as SandboxConnectConfig;
-    return connectVercel(config.state, config.options);
+  const config = isNewApi
+    ? (configOrState as SandboxConnectConfig)
+    : { state: configOrState as SandboxState, options: legacyOptions };
+
+  if (config.state.type === "local-docker") {
+    return connectLocalDockerSandbox(config.state, {
+      hooks: config.options?.hooks,
+      timeoutMs: config.options?.timeout,
+      ports: config.options?.ports,
+      env: config.options?.env,
+      gitUser: config.options?.gitUser,
+      githubToken: config.options?.githubToken,
+    });
   }
 
-  const state = configOrState as SandboxState;
-  return connectVercel(state, legacyOptions);
+  return connectVercel(config.state, config.options);
 }
