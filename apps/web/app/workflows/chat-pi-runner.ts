@@ -66,7 +66,7 @@ function parseModelSpec(selectedModelId: string): AgentModelSpec {
 function extractSandboxState(options: OpenAgentCallOptions): SandboxState | undefined {
   // OpenAgentCallOptions carries the sandbox via experimental_context. The
   // workflow already loaded sandboxState from Postgres before calling us.
-  const ctx = (options as { sandbox?: { state?: SandboxState } }).sandbox;
+  const ctx = (options as unknown as { sandbox?: { state?: SandboxState } }).sandbox;
   return ctx?.state;
 }
 
@@ -75,7 +75,7 @@ export async function runPiAgentStep(input: PiRunnerInput): Promise<PiRunnerOutp
   if (!sandboxState) {
     throw new Error("pi-runner: no sandbox state in agentOptions");
   }
-  const sandbox: Sandbox = await connectSandbox({ state: sandboxState });
+  const sandbox: Sandbox = await connectSandbox(sandboxState);
   const modelSpec = input.modelSpec ?? parseModelSpec(input.selectedModelId);
   const history = toHistory(input.messages);
   const lastUser = input.messages.findLast((m) => m.role === "user");
@@ -133,31 +133,24 @@ export async function runPiAgentStep(input: PiRunnerInput): Promise<PiRunnerOutp
 
     const stepFinishReasons: WebAgentStepFinishMetadata[] = [
       { finishReason: mapFinishReason(finishReason), rawFinishReason: finishReason },
-    ];
+    ] as unknown as WebAgentStepFinishMetadata[];
+    const usageShape = usage
+      ? ({
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          totalTokens: usage.inputTokens + usage.outputTokens,
+          reasoningTokens: 0,
+          cachedInputTokens: usage.cacheReadTokens,
+        } as unknown as WebAgentMessageMetadata["lastStepUsage"])
+      : undefined;
     const metadata: WebAgentMessageMetadata = {
       selectedModelId: input.selectedModelId,
       modelId: input.modelId,
-      lastStepUsage: usage
-        ? {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            totalTokens: usage.inputTokens + usage.outputTokens,
-            reasoningTokens: 0,
-            cachedInputTokens: usage.cacheReadTokens,
-          }
-        : undefined,
-      totalMessageUsage: usage
-        ? {
-            inputTokens: usage.inputTokens,
-            outputTokens: usage.outputTokens,
-            totalTokens: usage.inputTokens + usage.outputTokens,
-            reasoningTokens: 0,
-            cachedInputTokens: usage.cacheReadTokens,
-          }
-        : undefined,
+      lastStepUsage: usageShape,
+      totalMessageUsage: usageShape,
       lastStepCost: totalCostUsd,
       totalMessageCost: totalCostUsd,
-      lastStepFinishReason: mapFinishReason(finishReason),
+      lastStepFinishReason: mapFinishReason(finishReason) as WebAgentMessageMetadata["lastStepFinishReason"],
       lastStepRawFinishReason: finishReason,
       stepFinishReasons,
     };

@@ -27,7 +27,12 @@ export class RetryableError extends Error {
   }
 }
 
-export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+/**
+ * Pause the workflow until either `until` ms elapse or `until` is reached if a
+ * Date is supplied. Mirrors @vercel/workflow's overload that accepts both.
+ */
+export function sleep(until: number | Date, signal?: AbortSignal): Promise<void> {
+  const ms = until instanceof Date ? Math.max(0, until.getTime() - Date.now()) : until;
   return new Promise<void>((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason ?? new Error("aborted"));
     const timer = setTimeout(() => {

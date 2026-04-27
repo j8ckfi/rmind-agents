@@ -837,9 +837,17 @@ const runAgentStep = async (
     let totalMessageUsage = existingTotalMessageUsage;
     let totalMessageCost = existingTotalMessageCost;
 
+    // The legacy ToolLoopAgent.stream() returns an AgentStreamResult whose
+    // post-stream getters (totalUsage, finishReason, rawFinishReason, response,
+    // steps) feed the rest of this step. The pi-coding-agent backend doesn't
+    // produce that shape, so we synthesize a compatible-enough object below
+    // and reuse the inferred AI SDK type so downstream callers stay typed.
+    type StreamResult = Awaited<ReturnType<typeof webAgent.stream>>;
+    let result: StreamResult;
+
     if (isPiBackendEnabled()) {
       const piRes = await runPiAgentStep({
-        messages,
+        messages: messages as unknown as WebAgentUIMessage[],
         agentOptions,
         selectedModelId,
         modelId,
@@ -848,6 +856,27 @@ const runAgentStep = async (
         messageId,
       });
       responseMessage = piRes.responseMessage;
+      const mappedFinishReason: FinishReason =
+        piRes.finishReason === "tool_calls"
+          ? "tool-calls"
+          : piRes.finishReason === "abort"
+            ? "error"
+            : "stop";
+      result = {
+        totalUsage: (piRes.usage
+          ? {
+              inputTokens: piRes.usage.inputTokens,
+              outputTokens: piRes.usage.outputTokens,
+              totalTokens: piRes.usage.inputTokens + piRes.usage.outputTokens,
+              reasoningTokens: 0,
+              cachedInputTokens: piRes.usage.cacheReadTokens,
+            }
+          : { inputTokens: 0, outputTokens: 0, totalTokens: 0 }) as unknown as LanguageModelUsage,
+        finishReason: mappedFinishReason,
+        rawFinishReason: piRes.finishReason,
+        response: { messages: [] },
+        steps: [],
+      } as unknown as StreamResult;
       if (piRes.usage) {
         const piUsage: LanguageModelUsage = {
           inputTokens: piRes.usage.inputTokens,
@@ -878,7 +907,7 @@ const runAgentStep = async (
         },
       ];
     } else {
-    const result = await webAgent.stream({
+    result = await webAgent.stream({
       messages,
       options: agentOptions,
       abortSignal: abortController.signal,

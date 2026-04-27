@@ -15,7 +15,10 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 
 export interface WorkflowMetadata {
+  /** Stable identifier for the run. Aliased as `workflowRunId` for compatibility with @vercel/workflow callers. */
   runId: string;
+  /** @deprecated alias of runId; preserved so existing destructure `{ workflowRunId }` keeps compiling. */
+  workflowRunId: string;
   attempt: number;
   workflowName?: string;
   startedAt: number;
@@ -31,17 +34,21 @@ interface BufferedChunk<T> {
   index: number;
 }
 
-export interface RunHandle<T> {
+/** Run status — mirrors the @vercel/workflow surface so callers can keep using the same enum. */
+export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export interface RunHandle<T = unknown> {
   runId: string;
-  status: "pending" | "running" | "completed" | "failed" | "aborted";
-  getReadable(): ReadableStream<T>;
-  getReadableFromIndex(startIndex: number): ReadableStream<T>;
+  status: RunStatus;
+  getReadable<U = T>(): ReadableStream<U>;
+  getReadableFromIndex<U = T>(startIndex: number): ReadableStream<U>;
   abort(reason?: unknown): void;
+  cancel(reason?: unknown): Promise<void>;
   getResult(): Promise<unknown>;
   getError(): unknown;
 }
 
-interface RunRecord<T> extends Omit<RunHandle<T>, "getReadable" | "getReadableFromIndex" | "getResult" | "getError"> {
+interface RunRecord<T> extends Omit<RunHandle<T>, "getReadable" | "getReadableFromIndex" | "getResult" | "getError" | "cancel"> {
   buffer: BufferedChunk<T>[];
   subscribers: Set<{ enqueue: (chunk: BufferedChunk<T>) => void; close: () => void; error: (err: unknown) => void }>;
   writable: WritableStream<T>;
@@ -113,6 +120,7 @@ function makeRecord<T>(runId: string, workflowName?: string): RunRecord<T> {
     writable,
     metadata: {
       runId,
+      workflowRunId: runId,
       attempt: 1,
       workflowName,
       startedAt: Date.now(),
@@ -130,8 +138,8 @@ function makeRecord<T>(runId: string, workflowName?: string): RunRecord<T> {
     resultValue: undefined,
     resultError: undefined,
     abort(reason) {
-      if (record.status === "completed" || record.status === "failed" || record.status === "aborted") return;
-      record.status = "aborted";
+      if (record.status === "completed" || record.status === "failed" || record.status === "cancelled") return;
+      record.status = "cancelled";
       try {
         record.abortController.abort(reason);
       } catch {
@@ -149,9 +157,9 @@ function buildReadable<T>(record: RunRecord<T>, startIndex: number): ReadableStr
     start(controller) {
       const replay = record.buffer.filter((entry) => entry.index >= startIndex);
       for (const entry of replay) controller.enqueue(entry.data);
-      if (record.status === "completed" || record.status === "failed" || record.status === "aborted") {
+      if (record.status === "completed" || record.status === "failed" || record.status === "cancelled") {
         if (record.status === "failed") controller.error(record.resultError);
-        else if (record.status === "aborted") controller.error(record.resultError ?? new Error("aborted"));
+        else if (record.status === "cancelled") controller.error(record.resultError ?? new Error("aborted"));
         else controller.close();
         return;
       }
@@ -182,14 +190,18 @@ export function startWorkflow<TArgs extends unknown[], TResult>(
     get status() {
       return record.status;
     },
-    getReadable() {
-      return buildReadable(record, 0);
+    getReadable<U = unknown>() {
+      return buildReadable(record, 0) as unknown as ReadableStream<U>;
     },
-    getReadableFromIndex(startIndex: number) {
-      return buildReadable(record, startIndex);
+    getReadableFromIndex<U = unknown>(startIndex: number) {
+      return buildReadable(record, startIndex) as unknown as ReadableStream<U>;
     },
     abort(reason?: unknown) {
       record.abort(reason);
+    },
+    cancel(reason?: unknown) {
+      record.abort(reason);
+      return Promise.resolve();
     },
     getResult() {
       return record.resultPromise;
@@ -230,14 +242,18 @@ export function getRunHandle(runId: string): RunHandle<unknown> | undefined {
     get status() {
       return record.status;
     },
-    getReadable() {
-      return buildReadable(record, 0);
+    getReadable<U = unknown>() {
+      return buildReadable(record, 0) as unknown as ReadableStream<U>;
     },
-    getReadableFromIndex(startIndex: number) {
-      return buildReadable(record, startIndex);
+    getReadableFromIndex<U = unknown>(startIndex: number) {
+      return buildReadable(record, startIndex) as unknown as ReadableStream<U>;
     },
     abort(reason?: unknown) {
       record.abort(reason);
+    },
+    cancel(reason?: unknown) {
+      record.abort(reason);
+      return Promise.resolve();
     },
     getResult() {
       return record.resultPromise;
@@ -267,7 +283,7 @@ export function reapFinishedRuns(maxAgeMs = 60 * 60 * 1000): number {
   const now = Date.now();
   let removed = 0;
   for (const [id, record] of runs) {
-    if (record.status === "completed" || record.status === "failed" || record.status === "aborted") {
+    if (record.status === "completed" || record.status === "failed" || record.status === "cancelled") {
       if (now - record.metadata.startedAt > maxAgeMs) {
         runs.delete(id);
         removed += 1;

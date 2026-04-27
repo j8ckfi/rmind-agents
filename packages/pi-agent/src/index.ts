@@ -117,7 +117,11 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
       thinkingLevel: params.modelSpec.thinkingLevel,
       cwd: params.sandbox.workingDirectory,
       noTools: "builtin",
-      customTools: buildSandboxTools(params.sandbox),
+      // pi's ToolDefinition has narrower internal types for onUpdate (it expects
+      // AgentToolResult<unknown>), but our shim ToolBundle treats updates as
+      // opaque payloads — they get dropped at the UI layer in v1. Cast as
+      // unknown[] so we don't drag pi-internal types into the public surface.
+      customTools: buildSandboxTools(params.sandbox) as unknown as never[],
     });
     session = created.session;
   } catch (err) {

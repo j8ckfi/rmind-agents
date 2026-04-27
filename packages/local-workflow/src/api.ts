@@ -15,26 +15,34 @@ export interface StartOptions {
   workflowName?: string;
 }
 
+/**
+ * Start a workflow run.
+ *
+ * Two call shapes are supported to match @vercel/workflow:
+ *   - start(workflow, [arg1, arg2, ...])
+ *   - start(options, workflow, [arg1, arg2, ...])
+ * The args list is passed as a single array argument (matching the rack's
+ * existing call sites), not as a varargs spread.
+ */
 export function start<TArgs extends unknown[], TResult>(
   workflow: (...args: TArgs) => Promise<TResult>,
-  ...args: TArgs
-): RunHandle<unknown>;
+  args?: TArgs,
+): Promise<RunHandle<unknown>>;
 export function start<TArgs extends unknown[], TResult>(
   options: StartOptions,
   workflow: (...args: TArgs) => Promise<TResult>,
-  ...args: TArgs
-): RunHandle<unknown>;
-export function start(...inputs: unknown[]): RunHandle<unknown> {
+  args?: TArgs,
+): Promise<RunHandle<unknown>>;
+export function start(...inputs: unknown[]): Promise<RunHandle<unknown>> {
   if (typeof inputs[0] === "function") {
-    const [workflow, ...args] = inputs as [(...a: unknown[]) => Promise<unknown>, ...unknown[]];
-    return startWorkflow(workflow, args, { workflowName: workflow.name });
+    const workflow = inputs[0] as (...a: unknown[]) => Promise<unknown>;
+    const args = (inputs[1] as unknown[] | undefined) ?? [];
+    return Promise.resolve(startWorkflow(workflow, args, { workflowName: workflow.name }));
   }
-  const [options, workflow, ...args] = inputs as [
-    StartOptions,
-    (...a: unknown[]) => Promise<unknown>,
-    ...unknown[],
-  ];
-  return startWorkflow(workflow, args, { ...options });
+  const options = inputs[0] as StartOptions;
+  const workflow = inputs[1] as (...a: unknown[]) => Promise<unknown>;
+  const args = (inputs[2] as unknown[] | undefined) ?? [];
+  return Promise.resolve(startWorkflow(workflow, args, { ...options }));
 }
 
 export function getRun(runId: string): RunHandle<unknown> {
@@ -61,6 +69,9 @@ export function getRun(runId: string): RunHandle<unknown> {
       },
       abort() {
         // no-op
+      },
+      cancel() {
+        return Promise.resolve();
       },
       getResult() {
         return Promise.reject(new Error(`workflow run ${runId} not found`));
