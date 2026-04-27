@@ -90,10 +90,9 @@ export async function runPiAgentStep(input: PiRunnerInput): Promise<PiRunnerOutp
   let totalCostUsd: number | undefined;
 
   try {
-    await writer.write({
-      type: "start",
-      messageId: input.messageId,
-    } as unknown);
+    // The outer runAgentWorkflow already emits a "start" chunk via sendStart()
+    // before invoking runAgentStep — emitting one here would cause the client's
+    // message state machine to see a duplicate start for the same messageId.
     await writer.write({ type: "start-step" } as unknown);
 
     const result = await runAgentTurn({

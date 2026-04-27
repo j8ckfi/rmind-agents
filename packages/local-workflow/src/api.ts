@@ -52,7 +52,9 @@ export function getRun(runId: string): RunHandle<unknown> {
     // whose readable stream errors immediately so callers can tell the run is gone.
     return {
       runId,
-      status: "failed",
+      get status() {
+        return Promise.resolve<"failed">("failed");
+      },
       getReadable() {
         return new ReadableStream({
           start(controller) {

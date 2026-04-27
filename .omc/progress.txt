@@ -1,45 +1,121 @@
 ## RMIND-AGENTS RALPH PROGRESS LOG
 Spec date: 2026-04-27
 Working dir: C:/Users/Jack/projects/rmind-agents
-Branch: rmind/self-hosted-fork
+Branch: rmind/self-hosted-fork (pushed to origin/j8ckfi)
 Fork: https://github.com/j8ckfi/rmind-agents (upstream: vercel-labs/open-agents)
 Reference: C:/Users/Jack/projects/pi-mono-ref (badlogic/pi-mono)
+
+## Final state
+
+All 14 stories pass=true. Three commits on rmind/self-hosted-fork:
+1. feat(sandbox): add LocalDockerSandbox and dispatch from connectSandbox
+2. feat(pi-agent,workflow,deploy): wire pi-coding-agent backend, workflow shim, and rack deployment
+3. fix(types): align local-workflow shim with @vercel/workflow surface
+
+bun run typecheck:
+  packages/sandbox        ✓ exit 0
+  packages/local-workflow ✓ exit 0
+  packages/pi-agent       ✓ exit 0
+  apps/web                ✓ exit 0
+
+(Pre-existing typecheck issues in packages/agent, packages/shared, scripts/ — not
+introduced by this fork; not in scope.)
+
+## What ships in this fork
+
+Code:
+- packages/sandbox/local-docker/{sandbox,connect,state,config,index}.ts
+- packages/sandbox/docker/{Dockerfile,build.sh,.dockerignore}
+- packages/sandbox/factory.ts dispatches on state.type
+- packages/pi-agent/src/{index,event-translator,tools}.ts
+- packages/pi-agent/templates/{models.json,auth.json.example}
+- packages/local-workflow/src/{runtime,index,api,next}.ts
+- apps/web/app/workflows/chat-pi-runner.ts + gated dispatch in chat.ts
+
+Deployment:
+- deploy/rack/{docker-compose.yml,web.Dockerfile,.env.example}
+- deploy/cloudflared/{config.template.yml,README.md}
+- deploy/vercel/{next.config.ts,vercel.json,package.json,tsconfig.json,app/...,README.md}
+
+Docs:
+- DEPLOYMENT.md (full runbook)
+- .env.example
+- packages/pi-agent/README.md
+
+## What still requires user action
+
+1. Vercel auth (cd deploy/vercel && npx vercel login) — explicitly out of scope per
+   user instruction; agent stops here.
+2. Build the sandbox base image: `bash packages/sandbox/docker/build.sh` (needs
+   Docker daemon running; was off during this session).
+3. Create the GitHub App, paste credentials into deploy/rack/.env and Vercel env.
+4. Create Cloudflare Tunnel, paste token into deploy/rack/.env.
+5. Provision DNS for agents.rmind.us → tunnel.
+6. SSH into rack and run `pi auth login codex` for the OAuth handoff.
+7. Bring up the rack: `cd deploy/rack && docker compose --env-file .env up -d`.
+8. Vercel deploy: `cd deploy/vercel && npx vercel --prod`.
+
+DEPLOYMENT.md walks each step end-to-end.
 
 ## Recon findings (Phase 0)
 
 ### vercel-labs/open-agents anatomy
 
 - Bun monorepo, packages: agent, sandbox + apps/web (Next.js 15)
-- packages/sandbox/interface.ts — actual Sandbox interface (NOT the simplified one in the spec):
-  readFile, writeFile, stat, access, mkdir, readdir, exec, execDetached?,
-  stop, extendTimeout?, snapshot?, getState?, type, workingDirectory, env?, currentBranch?,
-  hooks?, environmentDetails?, host?, expiresAt?, timeout?, domain?(port)
+- packages/sandbox/interface.ts — actual Sandbox interface (NOT the simplified one
+  in the spec): readFile, writeFile, stat, access, mkdir, readdir, exec,
+  execDetached, stop, extendTimeout, snapshot, getState, type, workingDirectory,
+  env, currentBranch, hooks, environmentDetails, host, expiresAt, timeout, domain
 - 77 files import @open-agents/sandbox; main consumer apps/web/app/api/chat/_lib/runtime.ts
-- 14 files import from @vercel/workflow as `workflow` and `workflow/api`. Surface used: getWritable, getRun, sleep, getWorkflowMetadata
-- Drizzle schema apps/web/lib/db/schema.ts has sessions.sandboxState (jsonb) and sessions.lifecycleState (enum) — must coexist with new sandbox backend
-- Streaming: SSE response in apps/web/app/api/chat/[chatId]/stream/route.ts uses workflow.getRun(runId).getReadable<WebAgentUIMessageChunk>()
-- packages/agent/open-agent.ts builds a `ToolLoopAgent` from `ai`. Tools live in packages/agent/tools/{bash,read,write,edit,grep,glob,fetch,...}.ts and call sandbox via experimental_context
+- 14 files import from @vercel/workflow as `workflow` and `workflow/api`. Surface
+  used: getWritable, getRun, sleep, getWorkflowMetadata, start, cancel
+- Drizzle schema apps/web/lib/db/schema.ts has sessions.sandboxState (jsonb) and
+  sessions.lifecycleState (enum) — coexists fine with the new local-docker variant
+- Streaming: SSE response in apps/web/app/api/chat/[chatId]/stream/route.ts uses
+  workflow.getRun(runId).getReadable<WebAgentUIMessageChunk>()
+- packages/agent/open-agent.ts builds a `ToolLoopAgent` from `ai`. Tools live in
+  packages/agent/tools/{bash,read,write,edit,grep,glob,fetch,...}.ts and call
+  sandbox via experimental_context
 
 ### badlogic/pi-mono SDK anatomy
 
 - npm: @mariozechner/pi-coding-agent v0.70.2 (ESM only, Node >=20.6)
-- createAgentSession({ cwd, authStorage, modelRegistry, customTools, model, ... }) -> { session }
+- createAgentSession({ cwd, authStorage, modelRegistry, customTools, model, ... })
+  -> { session }
 - session.subscribe(listener) and session.prompt(text)
 - AuthStorage.create(authPath) reads ~/.pi/agent/auth.json (mode 0600)
-- ModelRegistry.create(authStorage, modelsJsonPath) reads JSON not YAML — spec is wrong about extension
-- Tools: TypeBox parameters, execute(toolCallId, params, signal, onUpdate, ctx) -> AgentToolResult
-- Built-in tools: read, bash, edit, write, grep, find, ls — must be replaced with sandbox-backed versions
-- Provider config example at packages/coding-agent/docs/models.md confirms openai-completions can target https://opencode.ai/v1 with apiKey "$OPENCODE_GO_API_KEY"
+- ModelRegistry.create(authStorage, modelsJsonPath) reads JSON not YAML — spec
+  was misleading
+- Tools: TypeBox parameters, execute(toolCallId, params, signal, onUpdate, ctx)
+  -> AgentToolResult
+- Built-in tools: read, bash, edit, write, grep, find, ls — replaced with
+  sandbox-backed versions via customTools
 
 ## Strategy adjustments vs spec
 
-1. The Sandbox interface is bigger than the spec listed. Implementing the actual interface is required so all 77 importers keep working.
-2. Pi uses models.json not models.yml — spec wording is misleading.
-3. Pi tool format is TypeBox + AgentToolResult — different from the AI SDK Zod tool format. Adapter needed.
-4. @vercel/workflow swap: 14 files use it. Build a local-workflow shim that satisfies the surface used (getWritable, getRun, sleep, getWorkflowMetadata) rather than rewriting all 14.
-5. ToolLoopAgent (`ai` package) and the pi session are very different runtimes. Wire pi as an opt-in backend behind AGENT_BACKEND env so existing path still works during the transition.
-6. Docker daemon is currently NOT running on the host machine — code can be written and type-checked, but the LocalDockerSandbox integration test must be run by the user once they start Docker Desktop.
-7. Vercel auth, GitHub App, Cloudflare tunnel, DNS, API keys, and pi OAuth all require user action — captured in DEPLOYMENT.md.
+1. The Sandbox interface is bigger than the spec listed. Implemented the actual
+   interface so all 77 importers keep working.
+2. Pi uses models.json not models.yml.
+3. Pi tool format is TypeBox + AgentToolResult — adapter layer in
+   packages/pi-agent/src/tools.ts bridges from the existing AI SDK Zod tool
+   format.
+4. @vercel/workflow swap: built local-workflow shim (workspace package literally
+   named "workflow") that satisfies the surface used. v1 is in-memory; rack
+   reboot kills in-flight runs (acceptable per spec §8).
+5. ToolLoopAgent and pi session are very different runtimes. Wired pi as opt-in
+   backend behind AGENT_BACKEND env so existing path still runs untouched.
+6. Docker daemon was NOT running on host machine — code authored and
+   typechecked, but the LocalDockerSandbox integration test runs on the rack
+   once Docker Desktop is up.
 
 ## Iteration log
-- 2026-04-27 — Recon complete. Branch rmind/self-hosted-fork created. PRD scaffold authored.
+- 2026-04-27 — Recon complete. Branch rmind/self-hosted-fork created. PRD authored.
+- 2026-04-27 — Phase 1 committed: LocalDockerSandbox + factory dispatch + sandbox
+  Dockerfile.
+- 2026-04-27 — Phase 2 committed: pi-agent wrapper + tools + models template +
+  workflow shim + chat.ts wiring + deployment configs (docker-compose, cloudflared,
+  Vercel proxy) + DEPLOYMENT.md.
+- 2026-04-27 — Phase 3 committed: typecheck pass — local-workflow shim aligned
+  with the actual @vercel/workflow surface used by the web app. apps/web
+  typechecks cleanly.
+- 2026-04-27 — Branch pushed to origin/rmind/self-hosted-fork.

@@ -39,7 +39,8 @@ export type RunStatus = "pending" | "running" | "completed" | "failed" | "cancel
 
 export interface RunHandle<T = unknown> {
   runId: string;
-  status: RunStatus;
+  /** Async to match @vercel/workflow's contract; awaiting on every read keeps callers correct. */
+  readonly status: Promise<RunStatus>;
   getReadable<U = T>(): ReadableStream<U>;
   getReadableFromIndex<U = T>(startIndex: number): ReadableStream<U>;
   abort(reason?: unknown): void;
@@ -48,7 +49,11 @@ export interface RunHandle<T = unknown> {
   getError(): unknown;
 }
 
-interface RunRecord<T> extends Omit<RunHandle<T>, "getReadable" | "getReadableFromIndex" | "getResult" | "getError" | "cancel"> {
+interface RunRecord<T> {
+  runId: string;
+  /** Internal mutable status. The public RunHandle exposes this via a Promise getter. */
+  status: RunStatus;
+  abort(reason?: unknown): void;
   buffer: BufferedChunk<T>[];
   subscribers: Set<{ enqueue: (chunk: BufferedChunk<T>) => void; close: () => void; error: (err: unknown) => void }>;
   writable: WritableStream<T>;
@@ -188,7 +193,7 @@ export function startWorkflow<TArgs extends unknown[], TResult>(
   const handle: RunHandle<unknown> = {
     runId,
     get status() {
-      return record.status;
+      return Promise.resolve(record.status);
     },
     getReadable<U = unknown>() {
       return buildReadable(record, 0) as unknown as ReadableStream<U>;
@@ -240,7 +245,7 @@ export function getRunHandle(runId: string): RunHandle<unknown> | undefined {
   return {
     runId,
     get status() {
-      return record.status;
+      return Promise.resolve(record.status);
     },
     getReadable<U = unknown>() {
       return buildReadable(record, 0) as unknown as ReadableStream<U>;

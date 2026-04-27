@@ -43,6 +43,12 @@ services:
         condition: service_healthy
     networks:
       - rmind
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
 
   postgres:
     image: postgres:16-alpine
@@ -66,7 +72,8 @@ services:
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
-      - web
+      web:
+        condition: service_healthy
     networks:
       - rmind
 

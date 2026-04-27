@@ -113,8 +113,10 @@ export class LocalDockerSandbox implements Sandbox {
   async stat(filePath: string): Promise<SandboxStats> {
     this.assertAlive();
     const absolute = this.absolute(filePath);
+    // Pass the path as a separate argv element — no shell interpolation, no
+    // quoting hazards from special characters in paths.
     const result = await this.execRaw(
-      ["sh", "-c", `stat -c '%F|%s|%Y' -- "${shellEscape(absolute)}"`],
+      ["stat", "-c", "%F|%s|%Y", "--", absolute],
       this.workingDirectory,
       LOCAL_DOCKER_DEFAULTS.execTimeoutMs,
     );
@@ -134,7 +136,7 @@ export class LocalDockerSandbox implements Sandbox {
     this.assertAlive();
     const absolute = this.absolute(filePath);
     const result = await this.execRaw(
-      ["sh", "-c", `test -e "${shellEscape(absolute)}"`],
+      ["test", "-e", absolute],
       this.workingDirectory,
       LOCAL_DOCKER_DEFAULTS.execTimeoutMs,
     );
@@ -146,10 +148,9 @@ export class LocalDockerSandbox implements Sandbox {
   async mkdir(filePath: string, options?: { recursive?: boolean }): Promise<void> {
     this.assertAlive();
     const absolute = this.absolute(filePath);
-    const flag = options?.recursive ? "-p" : "";
-    const cmd = `mkdir ${flag} -- "${shellEscape(absolute)}"`.trim();
+    const argv = options?.recursive ? ["mkdir", "-p", "--", absolute] : ["mkdir", "--", absolute];
     const result = await this.execRaw(
-      ["sh", "-c", cmd],
+      argv,
       this.workingDirectory,
       LOCAL_DOCKER_DEFAULTS.execTimeoutMs,
     );
@@ -161,10 +162,8 @@ export class LocalDockerSandbox implements Sandbox {
   async readdir(filePath: string, _options: { withFileTypes: true }): Promise<Dirent[]> {
     this.assertAlive();
     const absolute = this.absolute(filePath);
-    // Format: NAME\0TYPE-CHAR for each entry. Using -A skips . and ..
-    const cmd = `find "${shellEscape(absolute)}" -mindepth 1 -maxdepth 1 -printf '%f|%y\\n'`;
     const result = await this.execRaw(
-      ["sh", "-c", cmd],
+      ["find", absolute, "-mindepth", "1", "-maxdepth", "1", "-printf", "%f|%y\n"],
       this.workingDirectory,
       LOCAL_DOCKER_DEFAULTS.execTimeoutMs,
     );
@@ -397,10 +396,6 @@ export class LocalDockerSandbox implements Sandbox {
       truncated,
     };
   }
-}
-
-function shellEscape(value: string): string {
-  return value.replace(/(["\\$`])/g, "\\$1");
 }
 
 function extractFirstFile(stream: NodeJS.ReadableStream): Promise<Buffer | null> {
