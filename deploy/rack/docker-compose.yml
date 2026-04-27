@@ -1,0 +1,79 @@
+## Rack-side Docker Compose for the rmind-agents self-hosted deploy.
+## Runs the Next.js web app, Postgres for persistence, and a Cloudflare Tunnel
+## that exposes agents.rmind.us to the public internet via Vercel's reverse-proxy.
+##
+## bring up:    docker compose --env-file .env up -d
+## tail logs:   docker compose logs -f web
+## bring down:  docker compose down
+
+name: rmind-agents
+
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/rack/web.Dockerfile
+    image: rmind-agents-web:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ## Sandbox backend selection — ensures connectSandbox dispatches to LocalDockerSandbox.
+      SANDBOX_BACKEND: local-docker
+      SANDBOX_BASE_IMAGE: ${SANDBOX_BASE_IMAGE:-open-agents-sandbox:base}
+      SANDBOX_PUBLIC_HOST: ${SANDBOX_PUBLIC_HOST:-localhost}
+      ## Pi config paths (mounted volume below).
+      PI_AUTH_PATH: /data/pi/auth.json
+      PI_MODELS_PATH: /data/pi/models.json
+      AGENT_BACKEND: ${AGENT_BACKEND:-pi}
+      ## DB.
+      POSTGRES_URL: postgres://rmind:${POSTGRES_PASSWORD:-rmind}@postgres:5432/rmind
+      ## Tunnel origin used by the Vercel proxy when forwarding callbacks back here.
+      RACK_INTERNAL_URL: http://web:3000
+    volumes:
+      ## Required so the web container can spawn sandbox containers via dockerode.
+      ## v2 should switch to rootless docker / sysbox; v1 trusts the rack.
+      - /var/run/docker.sock:/var/run/docker.sock
+      ## Pi auth.json + models.json. Pre-seed by copying packages/pi-agent/templates/.
+      - ./pi:/data/pi
+      ## Cache for sandbox container artefacts (logs, snapshots).
+      - sandbox-cache:/var/lib/rmind/sandbox-cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rmind
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rmind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rmind}
+      POSTGRES_DB: rmind
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - rmind
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rmind -d rmind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - web
+    networks:
+      - rmind
+
+volumes:
+  postgres-data:
+  sandbox-cache:
+
+networks:
+  rmind:
+    driver: bridge

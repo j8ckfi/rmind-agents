@@ -1,0 +1,12 @@
+{
+  "//": "Placeholders only. Real tokens land here via `pi auth login <provider>` over SSH.",
+  "//api-keys": "API keys are read from env (OPENCODE_GO_API_KEY, ANTHROPIC_API_KEY). Only OAuth providers need entries here.",
+  "codex": {
+    "type": "oauth",
+    "accessToken": "<set-by-pi-auth-login>",
+    "refreshToken": "<set-by-pi-auth-login>",
+    "expiresAt": 0,
+    "scope": "openid profile email",
+    "tokenType": "Bearer"
+  }
+}

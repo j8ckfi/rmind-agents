@@ -37,6 +37,7 @@ import type {
   WorkflowRunStatus,
   WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
+import { isPiBackendEnabled, runPiAgentStep } from "./chat-pi-runner";
 
 type Options = {
   messages: WebAgentUIMessage[];
@@ -836,6 +837,47 @@ const runAgentStep = async (
     let totalMessageUsage = existingTotalMessageUsage;
     let totalMessageCost = existingTotalMessageCost;
 
+    if (isPiBackendEnabled()) {
+      const piRes = await runPiAgentStep({
+        messages,
+        agentOptions,
+        selectedModelId,
+        modelId,
+        abortSignal: abortController.signal,
+        writable,
+        messageId,
+      });
+      responseMessage = piRes.responseMessage;
+      if (piRes.usage) {
+        const piUsage: LanguageModelUsage = {
+          inputTokens: piRes.usage.inputTokens,
+          outputTokens: piRes.usage.outputTokens,
+          totalTokens: piRes.usage.inputTokens + piRes.usage.outputTokens,
+          reasoningTokens: 0,
+          cachedInputTokens: piRes.usage.cacheReadTokens,
+        } as unknown as LanguageModelUsage;
+        lastStepUsage = piUsage;
+        totalMessageUsage = totalMessageUsage
+          ? addLanguageModelUsage(totalMessageUsage, piUsage)
+          : piUsage;
+      }
+      if (piRes.totalCostUsd != null) {
+        lastStepCost = piRes.totalCostUsd;
+        totalMessageCost = (totalMessageCost ?? 0) + piRes.totalCostUsd;
+      }
+      stepFinishReasons = [
+        ...stepFinishReasons,
+        {
+          finishReason:
+            piRes.finishReason === "tool_calls"
+              ? ("tool-calls" as FinishReason)
+              : piRes.finishReason === "abort"
+                ? ("error" as FinishReason)
+                : ("stop" as FinishReason),
+          rawFinishReason: piRes.finishReason,
+        },
+      ];
+    } else {
     const result = await webAgent.stream({
       messages,
       options: agentOptions,
@@ -888,6 +930,7 @@ const runAgentStep = async (
       const writer = writable.getWriter();
       await writer.write(part);
       writer.releaseLock();
+    }
     }
 
     if (responseMessage == null) {

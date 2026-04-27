@@ -44,3 +44,12 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # open-agents dev server artifacts
 .open-agents-dev-server-state.json
 .open-agents-dev-server-*.pid
+
+# rmind-agents fork additions
+deploy/rack/.env
+deploy/rack/pi/auth.json
+deploy/cloudflared/credentials.json
+deploy/cloudflared/config.yml
+deploy/vercel/.vercel/
+.omc/state/
+.omc/cache/

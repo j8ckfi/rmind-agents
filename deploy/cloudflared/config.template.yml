@@ -1,0 +1,31 @@
+## Cloudflare Tunnel config for agents.rmind.us → rack web service.
+##
+## Bootstrap (one-off, on the rack):
+##   cloudflared tunnel login
+##   cloudflared tunnel create rmind-agents
+##   cloudflared tunnel route dns rmind-agents agents.rmind.us
+##   cp ~/.cloudflared/<TUNNEL_UUID>.json deploy/cloudflared/credentials.json
+##   cp deploy/cloudflared/config.template.yml deploy/cloudflared/config.yml
+##   # then replace <TUNNEL_UUID> below
+##
+## To run with token-based auth (preferred for docker-compose), skip the file
+## entirely — the cloudflared service in docker-compose.yml already takes
+## CLOUDFLARE_TUNNEL_TOKEN from the .env file.
+
+tunnel: <TUNNEL_UUID>
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: agents.rmind.us
+    service: http://web:3000
+    originRequest:
+      ## WebSocket upgrade for the SSE / streaming endpoints. The default 100s
+      ## idle timeout would kill quiet agent streams; lift it to 10 minutes.
+      ## The agent runner additionally emits a heartbeat every 30s as belt+braces.
+      noTLSVerify: true
+      connectTimeout: 30s
+      tcpKeepAlive: 30s
+      keepAliveTimeout: 90s
+      noHappyEyeballs: false
+      proxyType: ""
+  - service: http_status:404
