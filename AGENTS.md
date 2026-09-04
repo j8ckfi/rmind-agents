@@ -2,7 +2,7 @@
 
 This file provides guidance for AI coding agents working in this repository.
 
-**This is a living document.** When you make a mistake or learn something new about this codebase, add it to [Lessons Learned](docs/agents/lessons-learned.md).
+Keep durable, non-obvious project lessons in [Lessons Learned](docs/agents/lessons-learned.md); update or remove stale guidance rather than appending a rule for every mistake.
 
 ## Quick Links
 
@@ -26,7 +26,7 @@ Migrations run automatically during `bun run build` (via `lib/db/migrate.ts`), s
 
 ### Environment isolation
 
-Neon database branching is enabled in the Vercel project settings. Every preview deployment automatically gets its own isolated database branch forked from production. This means preview deployments never read or write production data. Production deployments use the main Neon database.
+Neon database branching is enabled in the Vercel project settings. Every preview deployment automatically gets its own isolated database branch forked from production. Production deployments use the main Neon database. Verify the actual target database before migration or deployment; do not infer isolation solely from a preview label.
 
 ## Commands
 
@@ -34,8 +34,8 @@ Neon database branching is enabled in the Vercel project settings. Every preview
 # Development
 bun run web            # Run web app
 
-# Quality checks (REQUIRED after making any changes)
-bun run ci                                 # Required: run format check, lint, typecheck, and tests
+# Quality checks (run the relevant checks; full CI for code changes)
+bun run ci                                 # Full format, lint, typecheck, and tests
 turbo typecheck                            # Type check all packages
 
 # Linting and formatting (Ultracite - oxlint + oxfmt, run from root)
