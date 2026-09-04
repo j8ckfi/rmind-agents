@@ -1,6 +1,6 @@
 ---
 name: web-animation-design
-description: "Design and implement web animations that feel natural and purposeful. Use this skill proactively whenever the user asks questions about animations, motion, easing, timing, duration, springs, transitions, or animation performance. This includes questions about how to animate specific UI elements, which easing to use, animation best practices, or accessibility considerations for motion. Triggers on: easing, ease-out, ease-in, ease-in-out, cubic-bezier, bounce, spring physics, keyframes, transform, opacity, fade, slide, scale, hover effects, microinteractions, Framer Motion, React Spring, GSAP, CSS transitions, entrance/exit animations, page transitions, stagger, will-change, GPU acceleration, prefers-reduced-motion, modal/dropdown/tooltip/popover/drawer animations, gesture animations, drag interactions, button press feel, feels janky, make it smooth."
+description: "Design, implement, or review web motion for the requested interaction, including timing, interruption, accessibility, and performance."
 metadata:
   short-description: Design and implement web animations that feel natural and purposeful
 ---
@@ -9,35 +9,11 @@ metadata:
 
 A comprehensive guide for creating animations that feel right, based on Emil Kowalski's "Animations on the Web" course.
 
-## Initial Response
+## Apply to the request
 
-When this skill is first invoked without a specific question, respond only with:
+Proceed with the animation task already described. Review-only requests remain read-only; requests for fixes include implementation. Use a concise report format suited to the result, with a comparison table only when helpful.
 
-> I'm ready to help you with animations based on Emil Kowalski's animations.dev course.
-
-Do not provide any other information until the user asks a question.
-
-## Review Format (Required)
-
-When reviewing animations, you MUST use a markdown table. Do NOT use a list with "Before:" and "After:" on separate lines. Always output an actual markdown table like this:
-
-| Before                            | After                                           |
-| --------------------------------- | ----------------------------------------------- |
-| `transform: scale(0)`             | `transform: scale(0.95)`                        |
-| `animation: fadeIn 400ms ease-in` | `animation: fadeIn 200ms ease-out`              |
-| No reduced motion support         | `@media (prefers-reduced-motion: reduce) {...}` |
-
-Wrong format (never do this):
-
-```
-Before: transform: scale(0)
-After: transform: scale(0.95)
-────────────────────────────
-Before: 400ms duration
-After: 200ms
-```
-
-Correct format: A single markdown table with | Before | After | columns, one row per issue.
+The timings and easing choices below are starting points. Follow product context, user requirements, accessibility, and observed behavior rather than treating every stylistic default as a defect.
 
 ## Quick Start
 

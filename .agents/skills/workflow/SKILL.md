@@ -6,9 +6,7 @@ metadata:
   version: '1.0'
 ---
 
-## *CRITICAL*: Always Use Correct `workflow` Documentation
-
-Your knowledge of `workflow` is outdated.
+## Use version-matched Workflow DevKit documentation
 
 The `workflow` documentation outlined below matches the installed version of the Workflow DevKit.
 Follow these instructions before starting on any `workflow`-related tasks:
@@ -33,7 +31,7 @@ Related packages also include bundled docs:
 - `@workflow/core`: `node_modules/@workflow/core/docs/` - Core runtime (foundations, how-it-works)
 - `@workflow/next`: `node_modules/@workflow/next/docs/` - Next.js integration
 
-**When in doubt, update to the latest version of the Workflow DevKit.**
+Resolve API uncertainty against the installed version and its bundled documentation. Upgrade only when the requested change needs it; do not change dependencies just to resolve uncertainty.
 
 ### Official Resources
 
